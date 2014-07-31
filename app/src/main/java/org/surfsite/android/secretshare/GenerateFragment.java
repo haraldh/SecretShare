@@ -1,15 +1,11 @@
 package org.surfsite.android.secretshare;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.app.Fragment;
-import android.content.DialogInterface;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
-import android.support.v4.print.PrintHelper;
-import android.util.Base64;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -19,9 +15,8 @@ import android.widget.TextView;
 import com.tiemens.secretshare.engine.SecretShare;
 import com.tiemens.secretshare.engine.SecretShare.ShareInfo;
 
-import java.io.UnsupportedEncodingException;
 import java.math.BigInteger;
-import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.List;
 
 
@@ -64,17 +59,6 @@ public class GenerateFragment extends Fragment implements FragmentSupport {
 		args.putString(ARG_CLEARTEXT, cleartext);
 		fragment.setArguments(args);
 		return fragment;
-	}
-
-	static BigInteger stringToBigInteger(String in) {
-		BigInteger bigint;
-		try {
-			bigint = new BigInteger(in.getBytes("UTF-8"));
-		} catch (UnsupportedEncodingException ex) {
-			ex.printStackTrace();
-			bigint = BigInteger.ZERO;
-		}
-		return bigint;
 	}
 
 	@Override
@@ -163,6 +147,8 @@ public class GenerateFragment extends Fragment implements FragmentSupport {
 
 	private class GenerateSharesTask extends AsyncTask<Void, Void, Void> {
 		private final Activity activity;
+		SecretShare.PublicInfo pi = null;
+		ShareInfo si[];
 		private TextView tv;
 		private List<SecretShare.ShareInfo> pieces;
 		private int n;
@@ -179,6 +165,7 @@ public class GenerateFragment extends Fragment implements FragmentSupport {
 			this.n = n;
 			this.k = k;
 			this.cleartext = cleartext;
+			si = new ShareInfo[n];
 			this.tv.setText("Generating shared secrets for " + cleartext.length()
 					+ " chars. Please Wait. This can take a long time.");
 		}
@@ -189,7 +176,7 @@ public class GenerateFragment extends Fragment implements FragmentSupport {
 
 		@Override
 		protected Void doInBackground(Void... params) {
-			final BigInteger secretInteger = stringToBigInteger(cleartext);
+			final BigInteger secretInteger = Renderer.stringToBigInteger(cleartext);
 			final BigInteger modulus;
 
 			modulus = SecretShare.createAppropriateModulusForSecret(secretInteger);
@@ -211,32 +198,20 @@ public class GenerateFragment extends Fragment implements FragmentSupport {
 			for (int i = 0; i < out.length; i++) {
 				final ShareInfo piece = pieces.get(i);
 
-				byte[] bmodulus = publicInfo.getPrimeModulus().toByteArray();
-				byte[] bshare = piece.getShare().toByteArray();
-				int blen = 4 + 4 + 4 + 4 + 4 + bmodulus.length + bshare.length;
-				final ByteBuffer bencoded = ByteBuffer.allocate(blen);
-				bencoded.putInt(n).putInt(k).putInt(piece.getX());
-				bencoded.putInt(bmodulus.length).put(bmodulus);
-				bencoded.putInt(bshare.length).put(bshare);
+				final String data = Renderer.encodeShareInfo(piece);
 
-				tv.append("Length: " + blen + "\n");
-
-				out[i] = n + ":" + k + ":" + piece.getX() + ":"
+				out[i] = "ssss-android:" + piece.getX() + "/" + k + ":" + n + "-"
+						+ publicInfo.getDescription()
 						+ publicInfo.getPrimeModulus() + ":" + piece.getShare();
 
-				tv.append("OutLen: " + out[i].length() + "\n");
 				tv.append(out[i] + "\n");
-				tv.append(bencoded + "\n0x");
-				for (byte b : bencoded.array()) {
-					tv.append(String.format("%x", b));
-				}
-				tv.append("\n");
-				String bencoded64 = Base64.encodeToString(bencoded.array(), Base64.DEFAULT);
-				tv.append("B64Len: " + bencoded64.length() + "\n");
-				tv.append(bencoded64 + "\n");
-				tv.append(bencoded + "\n\n");
+				tv.append("B64Len: " + data.length() + "\n");
+				tv.append(data + "\n");
+				if (pi == null)
+					pi = Renderer.decodePublicInfo(data);
 
-				final String data = "ssss-android:" + bencoded64;
+				si[n] = Renderer.decodeShareInfo(data, pi);
+/*
 				if (i == 0) {
 					View view = activity.getLayoutInflater().inflate(R.layout.address_qr, null);
 					final TextView tv = (TextView) view.findViewById(R.id.secret_text);
@@ -259,8 +234,14 @@ public class GenerateFragment extends Fragment implements FragmentSupport {
 
 					builder.show();
 				}
+*/
 			}
-
+			List<ShareInfo> li = new ArrayList<ShareInfo>();
+			li.add(si[0]);
+			li.add(si[1]);
+			li.add(si[2]);
+			final SecretShare.CombineOutput combineOutput = new SecretShare(pi)
+					.combine(li);
 			this.finished = true;
 		}
 	}

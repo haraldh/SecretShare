@@ -9,12 +9,17 @@ import android.graphics.Rect;
 import android.os.AsyncTask;
 import android.support.v4.print.PrintHelper;
 import android.text.TextPaint;
+import android.util.Base64;
 
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.EncodeHintType;
 import com.google.zxing.aztec.AztecWriter;
 import com.google.zxing.common.BitMatrix;
+import com.tiemens.secretshare.engine.SecretShare;
 
+import java.math.BigInteger;
+import java.nio.ByteBuffer;
+import java.security.InvalidParameterException;
 import java.util.ArrayList;
 import java.util.Hashtable;
 
@@ -178,6 +183,89 @@ public class Renderer {
 			start = pos;
 		}
 		return lines;
+	}
+
+	static BigInteger stringToBigInteger(String in) {
+		return new BigInteger(in.getBytes());
+	}
+
+	public static String encodeShareInfo(final SecretShare.ShareInfo piece) {
+		final SecretShare.PublicInfo publicInfo = piece.getPublicInfo();
+		final byte[] bytePrimeModulus = publicInfo.getPrimeModulus().toByteArray();
+		final byte[] byteShare = piece.getShare().toByteArray();
+		final byte[] byteDescription = publicInfo.getDescription().getBytes();
+		final int byteLen = 4 + 4 + 4
+				+ (4 + byteDescription.length)
+				+ (4 + bytePrimeModulus.length)
+				+ (4 + byteShare.length);
+		final ByteBuffer byteBuffer = ByteBuffer.allocate(byteLen);
+		byteBuffer.putInt(piece.getX());
+		byteBuffer.putInt(publicInfo.getK());
+		byteBuffer.putInt(publicInfo.getN());
+		byteBuffer.putInt(byteDescription.length).put(byteDescription);
+		byteBuffer.putInt(bytePrimeModulus.length).put(bytePrimeModulus);
+		byteBuffer.putInt(byteShare.length).put(byteShare);
+		final String byteEncoded64 = Base64.encodeToString(byteBuffer.array(), Base64.DEFAULT);
+
+		return "ssss-android:" + piece.getX() + "/" + publicInfo.getK()
+				+ ":" + publicInfo.getN() + "=" + byteEncoded64;
+	}
+
+	public static SecretShare.PublicInfo decodePublicInfo(final String buf) {
+		int index64 = buf.indexOf("=") + 1;
+		String substr = buf.substring(index64);
+		final byte[] decodeBytes = Base64.decode(substr, Base64.DEFAULT);
+		final ByteBuffer byteBuffer = ByteBuffer.wrap(decodeBytes);
+		int x = byteBuffer.getInt();
+		int k = byteBuffer.getInt();
+		int n = byteBuffer.getInt();
+		int byteDescriptionLength = byteBuffer.getInt();
+		final byte[] byteDescription = new byte[byteDescriptionLength];
+		byteBuffer.get(byteDescription);
+		int bytePrimeModulusLength = byteBuffer.getInt();
+		final byte[] bytePrimeModulus = new byte[bytePrimeModulusLength];
+		byteBuffer.get(bytePrimeModulus);
+		BigInteger inPrimeModulus = new BigInteger(bytePrimeModulus);
+		return new SecretShare.PublicInfo(n, k, inPrimeModulus, new String(byteDescription));
+	}
+
+	public static SecretShare.ShareInfo decodeShareInfo(final String buf, final SecretShare.PublicInfo publicInfo) throws InvalidParameterException {
+		int index64 = buf.indexOf("=") + 1;
+		final ByteBuffer byteBuffer = ByteBuffer.wrap(Base64.decode(buf.substring(index64), Base64.DEFAULT));
+		int x = byteBuffer.getInt();
+		int k = byteBuffer.getInt();
+		int n = byteBuffer.getInt();
+
+		if (n != publicInfo.getN()) {
+			throw new InvalidParameterException("SecretShare.PublicInfo.N does not match.");
+		}
+
+		if (k != publicInfo.getK()) {
+			throw new InvalidParameterException("SecretShare.PublicInfo.K does not match.");
+		}
+
+		if (x > n) {
+			throw new InvalidParameterException("SecretShare x > n.");
+		}
+
+		int byteDescriptionLength = byteBuffer.getInt();
+		final byte[] byteDescription = new byte[byteDescriptionLength];
+		byteBuffer.get(byteDescription);
+		if (publicInfo.getDescription().compareTo(new String(byteDescription)) != 0) {
+			throw new InvalidParameterException("SecretShare.PublicInfo.Description does not match.");
+		}
+		int bytePrimeModulusLength = byteBuffer.getInt();
+		final byte[] bytePrimeModulus = new byte[bytePrimeModulusLength];
+		byteBuffer.get(bytePrimeModulus);
+		BigInteger inPrimeModulus = new BigInteger(bytePrimeModulus);
+		if (inPrimeModulus.compareTo(publicInfo.getPrimeModulus()) != 0) {
+			throw new InvalidParameterException("SecretShare.PublicInfo.PrimeModulus does not match.");
+		}
+		int byteShareLength = byteBuffer.getInt();
+		final byte[] byteShare = new byte[byteShareLength];
+		byteBuffer.get(byteShare);
+		BigInteger inShare = new BigInteger(byteShare);
+		return new SecretShare.ShareInfo(x, inShare, publicInfo);
 	}
 
 }
