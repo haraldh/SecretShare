@@ -2,12 +2,10 @@
 <resources>
 
     <string name="app_name">SecretShare</string>
-    <string name="hello_world">Hello world!</string>
     <string name="action_settings">Settings</string>
-    <string name="string_clear_text_secret">Clear text secret</string>
-    <string name="string_generate_secrets">Generate Secrets</string>
+    <string name="string_clear_text_secret">The secret you want to split.</string>
+    <string name="string_generate_secrets">Generate split secret</string>
     <string name="string_encrypted_secrets">Encrypted secrets</string>
-    <string name="hello_blank_fragment">Hello blank fragment</string>
     <string name="print">Print</string>
 
 </resources>

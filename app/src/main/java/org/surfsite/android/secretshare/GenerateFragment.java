@@ -218,7 +218,8 @@ public class GenerateFragment extends Fragment implements FragmentSupport {
 					builder.setTitle("ssss-1");
 					builder.setView(view);
 					if (PrintHelper.systemSupportsPrint()) {
-						builder.setPositiveButton(R.string.print, new DialogInterface.OnClickListener() {
+						builder.setPositiveButton(R.string.print,
+								new DialogInterface.OnClickListener() {
 							@Override
 							public void onClick(DialogInterface dialog, int which) {
 								Renderer.printCode(activity, "sss-1", data);

@@ -104,7 +104,9 @@ public class Renderer {
 				Paint codePaint = new Paint();
 				codePaint.setAntiAlias(false);
 				codePaint.setDither(false);
-				canvas.drawBitmap(codeBitmap, centerXForAddress - codeBitmap.getWidth() / 2, y, codePaint);
+				canvas.drawBitmap(codeBitmap,
+						centerXForAddress - codeBitmap.getWidth() / 2, y,
+						codePaint);
 				y += codePadding - textPaint.ascent();
 				canvas.drawText(label, centerXForAddress, y + codeBitmap.getHeight(), textPaint);
 				return bmp;
@@ -259,7 +261,8 @@ public class Renderer {
 
 	public static SecretShare.PublicInfo decodePublicInfo(final String buf) {
 		int index64 = buf.indexOf("=") + 1;
-		final ByteBuffer byteBuffer = ByteBuffer.wrap(Base64.decode(buf.substring(index64), Base64.DEFAULT));
+		final ByteBuffer byteBuffer;
+		byteBuffer = ByteBuffer.wrap(Base64.decode(buf.substring(index64), Base64.DEFAULT));
 		int x = byteBuffer.getInt();
 		int k = byteBuffer.getInt();
 		int n = byteBuffer.getInt();
@@ -274,9 +277,12 @@ public class Renderer {
 		return new SecretShare.PublicInfo(n, k, inPrimeModulus, tryUnicodeExpand(byteDescription));
 	}
 
-	public static SecretShare.ShareInfo decodeShareInfo(final String buf, final SecretShare.PublicInfo publicInfo) throws InvalidParameterException {
+	public static SecretShare.ShareInfo decodeShareInfo(final String buf,
+														final SecretShare.PublicInfo publicInfo)
+			throws InvalidParameterException {
 		int index64 = buf.indexOf("=") + 1;
-		final ByteBuffer byteBuffer = ByteBuffer.wrap(Base64.decode(buf.substring(index64), Base64.DEFAULT));
+		final ByteBuffer byteBuffer;
+		byteBuffer = ByteBuffer.wrap(Base64.decode(buf.substring(index64), Base64.DEFAULT));
 		int x = byteBuffer.getInt();
 		int k = byteBuffer.getInt();
 		int n = byteBuffer.getInt();
