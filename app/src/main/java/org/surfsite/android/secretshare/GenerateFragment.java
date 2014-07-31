@@ -1,31 +1,27 @@
 package org.surfsite.android.secretshare;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.Fragment;
+import android.content.DialogInterface;
 import android.graphics.Bitmap;
-import android.graphics.Color;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.support.v4.print.PrintHelper;
 import android.util.Base64;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ImageView;
 import android.widget.TextView;
 
-import com.google.zxing.BarcodeFormat;
-import com.google.zxing.EncodeHintType;
-import com.google.zxing.WriterException;
-import com.google.zxing.common.BitMatrix;
-import com.google.zxing.qrcode.QRCodeWriter;
-import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel;
 import com.tiemens.secretshare.engine.SecretShare;
 import com.tiemens.secretshare.engine.SecretShare.ShareInfo;
 
 import java.io.UnsupportedEncodingException;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
-import java.util.Hashtable;
 import java.util.List;
 
 
@@ -41,7 +37,6 @@ public class GenerateFragment extends Fragment implements FragmentSupport {
 	private static final String ARG_N = "n";
 	private static final String ARG_K = "k";
 	private static final String ARG_CLEARTEXT = "cleartext";
-	private final static QRCodeWriter sQRCodeWriter = new QRCodeWriter();
 	private int n;
 	private int k;
 	private String cleartext;
@@ -128,11 +123,10 @@ public class GenerateFragment extends Fragment implements FragmentSupport {
 		super.onStart();
 		if (generateSharesTask != null)
 			generateSharesTask.cancel(true);
-
-		TextView tv = (TextView) getActivity().findViewById(R.id.generate_status);
-
-		generateSharesTask = new GenerateSharesTask(tv, n, k, cleartext);
-		generateSharesTask.execute();
+		else {
+			generateSharesTask = new GenerateSharesTask(n, k, cleartext);
+			generateSharesTask.execute();
+		}
 	}
 
 	@Override
@@ -168,6 +162,7 @@ public class GenerateFragment extends Fragment implements FragmentSupport {
 	}
 
 	private class GenerateSharesTask extends AsyncTask<Void, Void, Void> {
+		private final Activity activity;
 		private TextView tv;
 		private List<SecretShare.ShareInfo> pieces;
 		private int n;
@@ -175,58 +170,17 @@ public class GenerateFragment extends Fragment implements FragmentSupport {
 		private String cleartext;
 		private SecretShare.PublicInfo publicInfo;
 		private boolean finished = false;
+		private Bitmap qrCodeBitmap;
+		private ImageView qrCodeView;
 
-		public GenerateSharesTask(TextView tv, int n, int k, String cleartext) {
-			this.tv = tv;
+		public GenerateSharesTask(int n, int k, String cleartext) {
+			activity = getActivity();
+			this.tv = (TextView) activity.findViewById(R.id.generate_status);
 			this.n = n;
 			this.k = k;
 			this.cleartext = cleartext;
 			this.tv.setText("Generating shared secrets for " + cleartext.length()
 					+ " chars. Please Wait. This can take a long time.");
-		}
-
-		private Bitmap createBitmap(byte[] content, final int size) {
-			final Hashtable<EncodeHintType, Object> hints =
-					new Hashtable<EncodeHintType, Object>();
-			hints.put(EncodeHintType.ERROR_CORRECTION, ErrorCorrectionLevel.M);
-			hints.put(EncodeHintType.CHARACTER_SET, "ISO-8859-1");
-			BitMatrix result;
-
-			String data;
-			try {
-				data = new String(content, "ISO-8859-1");
-			} catch (Exception ex) {
-				ex.printStackTrace();
-				data = new String(content);
-			}
-
-			try {
-				result = sQRCodeWriter.encode(data,
-						BarcodeFormat.QR_CODE,
-						size,
-						size,
-						hints);
-			} catch (WriterException ex) {
-				return null;
-			}
-
-			final int width = result.getWidth();
-			final int height = result.getHeight();
-			final int[] pixels = new int[width * height];
-
-			for (int y = 0; y < height; y++) {
-				final int offset = y * width;
-				for (int x = 0; x < width; x++) {
-					pixels[offset + x] =
-							result.get(x, y) ? Color.BLACK : Color.TRANSPARENT;
-				}
-			}
-
-			final Bitmap bitmap =
-					Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-			bitmap.setPixels(pixels, 0, width, 0, 0, width, height);
-
-			return bitmap;
 		}
 
 		public boolean isFinished() {
@@ -260,7 +214,7 @@ public class GenerateFragment extends Fragment implements FragmentSupport {
 				byte[] bmodulus = publicInfo.getPrimeModulus().toByteArray();
 				byte[] bshare = piece.getShare().toByteArray();
 				int blen = 4 + 4 + 4 + 4 + 4 + bmodulus.length + bshare.length;
-				ByteBuffer bencoded = ByteBuffer.allocate(blen);
+				final ByteBuffer bencoded = ByteBuffer.allocate(blen);
 				bencoded.putInt(n).putInt(k).putInt(piece.getX());
 				bencoded.putInt(bmodulus.length).put(bmodulus);
 				bencoded.putInt(bshare.length).put(bshare);
@@ -281,7 +235,32 @@ public class GenerateFragment extends Fragment implements FragmentSupport {
 				tv.append("B64Len: " + bencoded64.length() + "\n");
 				tv.append(bencoded64 + "\n");
 				tv.append(bencoded + "\n\n");
+
+				final String data = "ssss-android:" + bencoded64;
+				if (i == 0) {
+					View view = activity.getLayoutInflater().inflate(R.layout.address_qr, null);
+					final TextView tv = (TextView) view.findViewById(R.id.secret_text);
+					tv.setText(out[i]);
+
+					AlertDialog.Builder builder = new AlertDialog.Builder(activity);
+					builder.setTitle("ssss-1");
+					builder.setView(view);
+					if (PrintHelper.systemSupportsPrint()) {
+						builder.setPositiveButton(R.string.print, new DialogInterface.OnClickListener() {
+							@Override
+							public void onClick(DialogInterface dialog, int which) {
+								Renderer.printCode(activity, "sss-1", data);
+							}
+						});
+						builder.setNegativeButton(android.R.string.cancel, null);
+					} else {
+						builder.setPositiveButton(android.R.string.ok, null);
+					}
+
+					builder.show();
+				}
 			}
+
 			this.finished = true;
 		}
 	}
