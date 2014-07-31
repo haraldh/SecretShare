@@ -31,6 +31,8 @@ import java.util.Hashtable;
 public class Renderer {
 	//	private final static AztecWriter sCodeWriter = new AztecWriter();
 	private final static QRCodeWriter sCodeWriter = new QRCodeWriter();
+	private final static byte BYTE_IS_UTF8 = 2;
+	private final static byte BYTE_NOT_UTF8 = 4;
 
 	public static Bitmap createBitmap(String data) {
 		final Hashtable<EncodeHintType, Object> hints =
@@ -204,14 +206,14 @@ public class Renderer {
 
 		byte[] encBytes = new byte[bytes.length + 1];
 		System.arraycopy(bytes, 0, encBytes, 0, bytes.length);
-		encBytes[bytes.length] = (byte) (isUTF8 ? 0 : 1);
+		encBytes[bytes.length] = (byte) (isUTF8 ? BYTE_IS_UTF8 : BYTE_NOT_UTF8);
 		return encBytes;
 	}
 
 	static String tryUnicodeExpand(byte[] in) {
 		byte[] exBytes = new byte[in.length - 1];
 		System.arraycopy(in, 0, exBytes, 0, in.length - 1);
-		if (in[in.length - 1] == 1)
+		if (in[in.length - 1] != BYTE_IS_UTF8)
 			return new String(exBytes);
 		final Expand unicodeExpand = new Expand();
 		try {
@@ -225,7 +227,7 @@ public class Renderer {
 	}
 
 	static BigInteger stringToSecret(String in) {
-		return new BigInteger(tryUnicodeCompress(in));
+		return new BigInteger(1, tryUnicodeCompress(in));
 	}
 
 	static String secretToString(BigInteger in) {
