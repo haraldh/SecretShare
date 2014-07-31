@@ -13,9 +13,14 @@ import android.util.Base64;
 
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.EncodeHintType;
-import com.google.zxing.aztec.AztecWriter;
 import com.google.zxing.common.BitMatrix;
+import com.google.zxing.qrcode.QRCodeWriter;
 import com.tiemens.secretshare.engine.SecretShare;
+
+import org.unicode.scsu.Compress;
+import org.unicode.scsu.EndOfInputException;
+import org.unicode.scsu.Expand;
+import org.unicode.scsu.IllegalInputException;
 
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
@@ -24,7 +29,8 @@ import java.util.ArrayList;
 import java.util.Hashtable;
 
 public class Renderer {
-	private final static AztecWriter sCodeWriter = new AztecWriter();
+	//	private final static AztecWriter sCodeWriter = new AztecWriter();
+	private final static QRCodeWriter sCodeWriter = new QRCodeWriter();
 
 	public static Bitmap createBitmap(String data) {
 		final Hashtable<EncodeHintType, Object> hints =
@@ -33,12 +39,17 @@ public class Renderer {
 		BitMatrix result;
 
 		final int size = (int) Math.sqrt(data.length() * 8) * 10;
-
-		result = sCodeWriter.encode(data,
-				BarcodeFormat.AZTEC,
-				size,
-				size,
-				hints);
+		try {
+			result = sCodeWriter.encode(data,
+					//				BarcodeFormat.AZTEC,
+					BarcodeFormat.QR_CODE,
+					size,
+					size,
+					hints);
+		} catch (Exception e) {
+			e.printStackTrace();
+			result = null;
+		}
 
 		final int width = result.getWidth();
 		final int height = result.getHeight();
@@ -100,14 +111,6 @@ public class Renderer {
 			@Override
 			protected void onPostExecute(final Bitmap bitmap) {
 				if (bitmap != null) {
-//DEBUG
-//                    android.app.AlertDialog.Builder builder = new android.app.AlertDialog.Builder(context);
-//                    android.widget.ImageView view = new android.widget.ImageView(context);
-//                    view.setImageBitmap(bitmap);
-//                    builder.setView(view);
-//                    builder.setPositiveButton(android.R.string.ok, null);
-//                    builder.show();
-
 					PrintHelper printHelper = new PrintHelper(context);
 					printHelper.setScaleMode(PrintHelper.SCALE_MODE_FIT);
 					printHelper.printBitmap(label, bitmap);
@@ -185,16 +188,57 @@ public class Renderer {
 		return lines;
 	}
 
-	static BigInteger stringToBigInteger(String in) {
-		return new BigInteger(in.getBytes());
+
+	static byte[] tryUnicodeCompress(String in) {
+		final Compress unicodeCompress = new Compress();
+		byte[] bytes = in.getBytes();
+		boolean isUTF8 = true;
+		try {
+			bytes = unicodeCompress.compress(in);
+		} catch (IllegalInputException e) {
+			isUTF8 = false;
+		} catch (EndOfInputException e) {
+			isUTF8 = false;
+			e.printStackTrace();
+		}
+
+		byte[] encBytes = new byte[bytes.length + 1];
+		System.arraycopy(bytes, 0, encBytes, 0, bytes.length);
+		encBytes[bytes.length] = (byte) (isUTF8 ? 0 : 1);
+		return encBytes;
+	}
+
+	static String tryUnicodeExpand(byte[] in) {
+		byte[] exBytes = new byte[in.length - 1];
+		System.arraycopy(in, 0, exBytes, 0, in.length - 1);
+		if (in[in.length - 1] == 1)
+			return new String(exBytes);
+		final Expand unicodeExpand = new Expand();
+		try {
+			return unicodeExpand.expand(exBytes);
+		} catch (IllegalInputException e) {
+			e.printStackTrace();
+		} catch (EndOfInputException e) {
+			e.printStackTrace();
+		}
+		return new String(exBytes);
+	}
+
+	static BigInteger stringToSecret(String in) {
+		return new BigInteger(tryUnicodeCompress(in));
+	}
+
+	static String secretToString(BigInteger in) {
+		return tryUnicodeExpand(in.toByteArray());
 	}
 
 	public static String encodeShareInfo(final SecretShare.ShareInfo piece) {
 		final SecretShare.PublicInfo publicInfo = piece.getPublicInfo();
 		final byte[] bytePrimeModulus = publicInfo.getPrimeModulus().toByteArray();
 		final byte[] byteShare = piece.getShare().toByteArray();
-		final byte[] byteDescription = publicInfo.getDescription().getBytes();
-		final int byteLen = 4 + 4 + 4
+		final byte[] byteDescription = tryUnicodeCompress(publicInfo.getDescription());
+		final int byteLen = 4
+				+ 4 + 4
 				+ (4 + byteDescription.length)
 				+ (4 + bytePrimeModulus.length)
 				+ (4 + byteShare.length);
@@ -213,9 +257,7 @@ public class Renderer {
 
 	public static SecretShare.PublicInfo decodePublicInfo(final String buf) {
 		int index64 = buf.indexOf("=") + 1;
-		String substr = buf.substring(index64);
-		final byte[] decodeBytes = Base64.decode(substr, Base64.DEFAULT);
-		final ByteBuffer byteBuffer = ByteBuffer.wrap(decodeBytes);
+		final ByteBuffer byteBuffer = ByteBuffer.wrap(Base64.decode(buf.substring(index64), Base64.DEFAULT));
 		int x = byteBuffer.getInt();
 		int k = byteBuffer.getInt();
 		int n = byteBuffer.getInt();
@@ -223,10 +265,11 @@ public class Renderer {
 		final byte[] byteDescription = new byte[byteDescriptionLength];
 		byteBuffer.get(byteDescription);
 		int bytePrimeModulusLength = byteBuffer.getInt();
+		System.out.printf("len=%d\n", bytePrimeModulusLength);
 		final byte[] bytePrimeModulus = new byte[bytePrimeModulusLength];
 		byteBuffer.get(bytePrimeModulus);
 		BigInteger inPrimeModulus = new BigInteger(bytePrimeModulus);
-		return new SecretShare.PublicInfo(n, k, inPrimeModulus, new String(byteDescription));
+		return new SecretShare.PublicInfo(n, k, inPrimeModulus, tryUnicodeExpand(byteDescription));
 	}
 
 	public static SecretShare.ShareInfo decodeShareInfo(final String buf, final SecretShare.PublicInfo publicInfo) throws InvalidParameterException {
@@ -251,7 +294,7 @@ public class Renderer {
 		int byteDescriptionLength = byteBuffer.getInt();
 		final byte[] byteDescription = new byte[byteDescriptionLength];
 		byteBuffer.get(byteDescription);
-		if (publicInfo.getDescription().compareTo(new String(byteDescription)) != 0) {
+		if (publicInfo.getDescription().compareTo(tryUnicodeExpand(byteDescription)) != 0) {
 			throw new InvalidParameterException("SecretShare.PublicInfo.Description does not match.");
 		}
 		int bytePrimeModulusLength = byteBuffer.getInt();

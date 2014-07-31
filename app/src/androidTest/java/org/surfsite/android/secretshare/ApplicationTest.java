@@ -36,14 +36,14 @@ public class ApplicationTest extends ApplicationTestCase<Application> {
 		SecretShare.PublicInfo pi = null;
 		List<SecretShare.ShareInfo> si = new ArrayList<SecretShare.ShareInfo>();
 
-		final BigInteger secretInteger = Renderer.stringToBigInteger(cleartext);
+		final BigInteger secretInteger = Renderer.stringToSecret(cleartext);
 		final BigInteger modulus;
 
 		modulus = SecretShare.createAppropriateModulusForSecret(secretInteger);
 		publicInfo = new SecretShare.PublicInfo(n,
 				k,
 				modulus,
-				"ssss-test");
+				"ssss-test€€?=)(/&%$§!#ﬁ#£ ^ﬁÌ‰)SDGFHKLŒŒﬂıÓ‚€ƒ€Ω†⁄ø⁄");
 		final SecretShare.SplitSecretOutput splitSecretOutput = new SecretShare(publicInfo)
 				.split(secretInteger);
 		pieces = splitSecretOutput.getShareInfos();
@@ -63,6 +63,7 @@ public class ApplicationTest extends ApplicationTestCase<Application> {
 		final SecretShare.CombineOutput combineOutput = new SecretShare(pi)
 				.combine(si);
 
-		assertEquals(cleartext, new String(combineOutput.getSecret().toByteArray()));
+		assertEquals(cleartext, Renderer.secretToString(combineOutput.getSecret()));
+		assertEquals(publicInfo.getDescription(), si.get(0).getPublicInfo().getDescription());
 	}
 }

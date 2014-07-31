@@ -1,11 +1,14 @@
 package org.surfsite.android.secretshare;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.Fragment;
+import android.content.DialogInterface;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.support.v4.print.PrintHelper;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -16,7 +19,6 @@ import com.tiemens.secretshare.engine.SecretShare;
 import com.tiemens.secretshare.engine.SecretShare.ShareInfo;
 
 import java.math.BigInteger;
-import java.util.ArrayList;
 import java.util.List;
 
 
@@ -147,8 +149,6 @@ public class GenerateFragment extends Fragment implements FragmentSupport {
 
 	private class GenerateSharesTask extends AsyncTask<Void, Void, Void> {
 		private final Activity activity;
-		SecretShare.PublicInfo pi = null;
-		ShareInfo si[];
 		private TextView tv;
 		private List<SecretShare.ShareInfo> pieces;
 		private int n;
@@ -158,6 +158,7 @@ public class GenerateFragment extends Fragment implements FragmentSupport {
 		private boolean finished = false;
 		private Bitmap qrCodeBitmap;
 		private ImageView qrCodeView;
+		private BigInteger secretInteger;
 
 		public GenerateSharesTask(int n, int k, String cleartext) {
 			activity = getActivity();
@@ -165,9 +166,9 @@ public class GenerateFragment extends Fragment implements FragmentSupport {
 			this.n = n;
 			this.k = k;
 			this.cleartext = cleartext;
-			si = new ShareInfo[n];
-			this.tv.setText("Generating shared secrets for " + cleartext.length()
-					+ " chars. Please Wait. This can take a long time.");
+			secretInteger = Renderer.stringToSecret(cleartext);
+			this.tv.setText("Generating shared secrets for " + secretInteger.bitLength() / 8
+					+ " bytes. Please Wait. This can take a long time.");
 		}
 
 		public boolean isFinished() {
@@ -176,14 +177,14 @@ public class GenerateFragment extends Fragment implements FragmentSupport {
 
 		@Override
 		protected Void doInBackground(Void... params) {
-			final BigInteger secretInteger = Renderer.stringToBigInteger(cleartext);
+			final BigInteger secretInteger = Renderer.stringToSecret(cleartext);
 			final BigInteger modulus;
 
 			modulus = SecretShare.createAppropriateModulusForSecret(secretInteger);
 			publicInfo = new SecretShare.PublicInfo(n,
 					k,
 					modulus,
-					null);
+					"test");
 			final SecretShare.SplitSecretOutput splitSecretOutput = new SecretShare(publicInfo)
 					.split(secretInteger);
 			pieces = splitSecretOutput.getShareInfos();
@@ -207,11 +208,7 @@ public class GenerateFragment extends Fragment implements FragmentSupport {
 				tv.append(out[i] + "\n");
 				tv.append("B64Len: " + data.length() + "\n");
 				tv.append(data + "\n");
-				if (pi == null)
-					pi = Renderer.decodePublicInfo(data);
 
-				si[n] = Renderer.decodeShareInfo(data, pi);
-/*
 				if (i == 0) {
 					View view = activity.getLayoutInflater().inflate(R.layout.address_qr, null);
 					final TextView tv = (TextView) view.findViewById(R.id.secret_text);
@@ -234,14 +231,8 @@ public class GenerateFragment extends Fragment implements FragmentSupport {
 
 					builder.show();
 				}
-*/
+
 			}
-			List<ShareInfo> li = new ArrayList<ShareInfo>();
-			li.add(si[0]);
-			li.add(si[1]);
-			li.add(si[2]);
-			final SecretShare.CombineOutput combineOutput = new SecretShare(pi)
-					.combine(li);
 			this.finished = true;
 		}
 	}
