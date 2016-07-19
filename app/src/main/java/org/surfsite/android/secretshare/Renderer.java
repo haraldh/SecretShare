@@ -36,9 +36,9 @@ public class Renderer {
 
 	public static Bitmap createBitmap(String data) {
 		final Hashtable<EncodeHintType, Object> hints =
-				new Hashtable<EncodeHintType, Object>();
-		hints.put(EncodeHintType.CHARACTER_SET, "ISO-8859-1");
-		BitMatrix result;
+                new Hashtable<>();
+        hints.put(EncodeHintType.CHARACTER_SET, "ISO-8859-1");
+        BitMatrix result;
 
 		final int size = (int) Math.sqrt(data.length() * 8) * 10;
 		try {
@@ -50,8 +50,8 @@ public class Renderer {
 					hints);
 		} catch (Exception e) {
 			e.printStackTrace();
-			result = null;
-		}
+            return null;
+        }
 
 		final int width = result.getWidth();
 		final int height = result.getHeight();
@@ -88,6 +88,9 @@ public class Renderer {
 				int textWidth = getTextWidth(label, textPaint);
 
 				Bitmap codeBitmap = createBitmap(contents);
+                if (codeBitmap == null)
+                    return null;
+
 				final int width = Math.max(textWidth, codeBitmap.getWidth());
 				Bitmap bmp = Bitmap.createBitmap(width + bitmapMargin * 2,
 						textHeight + codeBitmap.getHeight() + codePadding * 2 + bitmapMargin * 2,
@@ -135,9 +138,9 @@ public class Renderer {
 	public static ArrayList<String> wrap(String txt, int maxWidth, boolean mustFit, Paint paint) {
 		int pos = 0;
 		int start = pos;
-		ArrayList<String> lines = new ArrayList<String>();
-		while (true) {
-			int i = pos;
+        ArrayList<String> lines = new ArrayList<>();
+        while (true) {
+            int i = pos;
 			if (txt == null) txt = "";
 			int len = txt.length();
 			if (pos >= len) {
@@ -208,11 +211,14 @@ public class Renderer {
 
 		byte[] encBytes = new byte[bytes.length + 1];
 		System.arraycopy(bytes, 0, encBytes, 0, bytes.length);
-		encBytes[bytes.length] = (byte) (isUTF8 ? BYTE_IS_UTF8 : BYTE_NOT_UTF8);
-		return encBytes;
-	}
+        encBytes[bytes.length] = isUTF8 ? BYTE_IS_UTF8 : BYTE_NOT_UTF8;
+        return encBytes;
+    }
 
 	static String tryUnicodeExpand(byte[] in) {
+        if (in.length == 0)
+            return null;
+
 		byte[] exBytes = new byte[in.length - 1];
 		System.arraycopy(in, 0, exBytes, 0, in.length - 1);
 		if (in[in.length - 1] != BYTE_IS_UTF8)
@@ -220,11 +226,9 @@ public class Renderer {
 		final Expand unicodeExpand = new Expand();
 		try {
 			return unicodeExpand.expand(exBytes);
-		} catch (IllegalInputException e) {
-			e.printStackTrace();
-		} catch (EndOfInputException e) {
-			e.printStackTrace();
-		}
+        } catch (IllegalInputException | EndOfInputException e) {
+            e.printStackTrace();
+        }
 		return new String(exBytes);
 	}
 
@@ -240,7 +244,15 @@ public class Renderer {
 		final SecretShare.PublicInfo publicInfo = piece.getPublicInfo();
 		final byte[] bytePrimeModulus = publicInfo.getPrimeModulus().toByteArray();
 		final byte[] byteShare = piece.getShare().toByteArray();
-		final byte[] byteDescription = tryUnicodeCompress(publicInfo.getDescription());
+        String description = publicInfo.getDescription();
+        final byte[] byteDescription;
+
+        if ((description != null) && (description.length() > 0)) {
+            byteDescription = tryUnicodeCompress(description);
+        } else {
+            byteDescription = new byte[0];
+        }
+
 		final int byteLen = 4
 				+ 4 + 4
 				+ (4 + byteDescription.length)
@@ -250,38 +262,58 @@ public class Renderer {
 		byteBuffer.putInt(piece.getX());
 		byteBuffer.putInt(publicInfo.getK());
 		byteBuffer.putInt(publicInfo.getN());
-		byteBuffer.putInt(byteDescription.length).put(byteDescription);
-		byteBuffer.putInt(bytePrimeModulus.length).put(bytePrimeModulus);
-		byteBuffer.putInt(byteShare.length).put(byteShare);
+        byteBuffer.putInt(byteDescription.length);
+        if (byteDescription.length > 0)
+            byteBuffer.put(byteDescription);
+        byteBuffer.putInt(bytePrimeModulus.length).put(bytePrimeModulus);
+        byteBuffer.putInt(byteShare.length).put(byteShare);
 		final String byteEncoded64 = Base64.encodeToString(byteBuffer.array(), Base64.DEFAULT);
 
-		return "ssss-android:" + piece.getX() + "/" + publicInfo.getK()
-				+ ":" + publicInfo.getN() + "=" + byteEncoded64;
-	}
+        return "ssssqr:" + piece.getX() + "/" + publicInfo.getK()
+                + ":" + publicInfo.getN() + "=" + byteEncoded64;
+    }
 
-	public static SecretShare.PublicInfo decodePublicInfo(final String buf) {
-		int index64 = buf.indexOf("=") + 1;
-		final ByteBuffer byteBuffer;
+    public static SecretShare.PublicInfo decodePublicInfo(final String buf)
+            throws InvalidParameterException {
+        if (!buf.startsWith("ssssqr:")) {
+            throw new InvalidParameterException("Not a SecretShare code.");
+        }
+        int index64 = buf.indexOf("=") + 1;
+        final ByteBuffer byteBuffer;
+        final byte[] byteDescription;
+
 		byteBuffer = ByteBuffer.wrap(Base64.decode(buf.substring(index64), Base64.DEFAULT));
 		int x = byteBuffer.getInt();
 		int k = byteBuffer.getInt();
 		int n = byteBuffer.getInt();
+
 		int byteDescriptionLength = byteBuffer.getInt();
-		final byte[] byteDescription = new byte[byteDescriptionLength];
-		byteBuffer.get(byteDescription);
+        if (byteDescriptionLength > 0) {
+            byteDescription = new byte[byteDescriptionLength];
+            byteBuffer.get(byteDescription);
+        } else {
+            byteDescription = new byte[0];
+        }
+
 		int bytePrimeModulusLength = byteBuffer.getInt();
-		System.out.printf("len=%d\n", bytePrimeModulusLength);
 		final byte[] bytePrimeModulus = new byte[bytePrimeModulusLength];
 		byteBuffer.get(bytePrimeModulus);
 		BigInteger inPrimeModulus = new BigInteger(bytePrimeModulus);
+
 		return new SecretShare.PublicInfo(n, k, inPrimeModulus, tryUnicodeExpand(byteDescription));
 	}
 
 	public static SecretShare.ShareInfo decodeShareInfo(final String buf,
 														final SecretShare.PublicInfo publicInfo)
 			throws InvalidParameterException {
+        if (!buf.startsWith("ssssqr:")) {
+            throw new InvalidParameterException("Not a SecretShare code.");
+        }
+
 		int index64 = buf.indexOf("=") + 1;
 		final ByteBuffer byteBuffer;
+        final byte[] byteDescription;
+
 		byteBuffer = ByteBuffer.wrap(Base64.decode(buf.substring(index64), Base64.DEFAULT));
 		int x = byteBuffer.getInt();
 		int k = byteBuffer.getInt();
@@ -300,11 +332,20 @@ public class Renderer {
 		}
 
 		int byteDescriptionLength = byteBuffer.getInt();
-		final byte[] byteDescription = new byte[byteDescriptionLength];
-		byteBuffer.get(byteDescription);
-		if (publicInfo.getDescription().compareTo(tryUnicodeExpand(byteDescription)) != 0) {
-			throw new InvalidParameterException("SecretShare.PublicInfo.Description does not match.");
-		}
+
+        if (byteDescriptionLength > 0) {
+            byteDescription = new byte[byteDescriptionLength];
+            byteBuffer.get(byteDescription);
+        } else {
+            byteDescription = new byte[0];
+        }
+        final String description = publicInfo.getDescription();
+        final String newDescription = tryUnicodeExpand(byteDescription);
+        if ((description != null && newDescription != null && description.compareTo(newDescription) != 0)
+                || (description == null && newDescription != null)
+                || (description != null && newDescription == null)) {
+            throw new InvalidParameterException("SecretShare.PublicInfo.Description does not match.");
+        }
 		int bytePrimeModulusLength = byteBuffer.getInt();
 		final byte[] bytePrimeModulus = new byte[bytePrimeModulusLength];
 		byteBuffer.get(bytePrimeModulus);

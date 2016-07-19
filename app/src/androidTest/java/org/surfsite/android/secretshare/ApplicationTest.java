@@ -17,7 +17,7 @@ public class ApplicationTest extends ApplicationTestCase<Application> {
 		super(Application.class);
 	}
 
-	public void testEncrypt() throws Exception {
+	public void testEncryptDescriptionUTF8() throws Exception {
 		List<SecretShare.ShareInfo> pieces;
 		int n = 16;
 		int k = 4;
@@ -34,7 +34,7 @@ public class ApplicationTest extends ApplicationTestCase<Application> {
 				+ "01234567890123456789012345678901234567890123456789";
 		SecretShare.PublicInfo publicInfo;
 		SecretShare.PublicInfo pi = null;
-		List<SecretShare.ShareInfo> si = new ArrayList<SecretShare.ShareInfo>();
+		List<SecretShare.ShareInfo> si = new ArrayList<>();
 
 		final BigInteger secretInteger = Renderer.stringToSecret(cleartext);
 		final BigInteger modulus;
@@ -44,6 +44,56 @@ public class ApplicationTest extends ApplicationTestCase<Application> {
 				k,
 				modulus,
 				"ssss-test€€?=)(/&%$§!#ﬁ#£ ^ﬁÌ‰)SDGFHKLŒŒﬂıÓ‚€ƒ€Ω†⁄ø⁄");
+		final SecretShare.SplitSecretOutput splitSecretOutput = new SecretShare(publicInfo)
+				.split(secretInteger);
+		pieces = splitSecretOutput.getShareInfos();
+
+		for (int i = 0; i < pieces.size(); i++) {
+			final SecretShare.ShareInfo piece = pieces.get(i);
+
+			final String data = Renderer.encodeShareInfo(piece);
+
+			if (pi == null)
+				pi = Renderer.decodePublicInfo(data);
+
+			if (i % 4 == 0)
+				si.add(Renderer.decodeShareInfo(data, pi));
+		}
+
+		final SecretShare.CombineOutput combineOutput = new SecretShare(pi)
+				.combine(si);
+
+		assertEquals(cleartext, Renderer.secretToString(combineOutput.getSecret()));
+		assertEquals(publicInfo.getDescription(), si.get(0).getPublicInfo().getDescription());
+	}
+
+	public void testEncryptDescriptionEmpty() throws Exception {
+		List<SecretShare.ShareInfo> pieces;
+		int n = 16;
+		int k = 4;
+		String cleartext
+				= "01234567890123456789012345678901234567890123456789"
+				+ "01234567890123456789012345678901234567890123456789"
+				+ "01234567890123456789012345678901234567890123456789"
+				+ "01234567890123456789012345678901234567890123456789"
+				+ "01234567890123456789012345678901234567890123456789"
+				+ "01234567890123456789012345678901234567890123456789"
+				+ "01234567890123456789012345678901234567890123456789"
+				+ "01234567890123456789012345678901234567890123456789"
+				+ "01234567890123456789012345678901234567890123456789"
+				+ "01234567890123456789012345678901234567890123456789";
+		SecretShare.PublicInfo publicInfo;
+		SecretShare.PublicInfo pi = null;
+		List<SecretShare.ShareInfo> si = new ArrayList<>();
+
+		final BigInteger secretInteger = Renderer.stringToSecret(cleartext);
+		final BigInteger modulus;
+
+		modulus = SecretShare.createAppropriateModulusForSecret(secretInteger);
+		publicInfo = new SecretShare.PublicInfo(n,
+				k,
+				modulus,
+				null);
 		final SecretShare.SplitSecretOutput splitSecretOutput = new SecretShare(publicInfo)
 				.split(secretInteger);
 		pieces = splitSecretOutput.getShareInfos();
